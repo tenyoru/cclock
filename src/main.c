@@ -70,7 +70,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
   label = gtk_label_new(format_time_label(config->time));
   GtkCssProvider *provider = gtk_css_provider_new();
   gtk_css_provider_load_from_string(
-      provider, "* { background-color: rgba(0, 0, 0, 0.3); }"
+      provider, "window { background-color: rgba(0, 0, 0, 0.3); }"
                 "label { font-size: 72px; color: #fcefd4; }");
 
   gtk_style_context_add_provider_for_display(
