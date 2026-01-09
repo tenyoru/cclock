@@ -12,30 +12,40 @@
       pkgs = nixpkgs.legacyPackages.${system};
 
       dependencies = with pkgs; [
-        clang
+        # clang
+        zig
         gtk4.dev
         gtk4-layer-shell
-        cmake
-        ninja
+        # cmake
+        # ninja
         pkg-config
-        sysprof
+        # sysprof
       ];
 
       devDependencies = dependencies ++ (with pkgs; [
-        gdb
+        # gdb
       ]);
     in
     {
-      packages = {
+      packages.${system} = {
         cclock = pkgs.stdenv.mkDerivation {
           pname = "cclock";
           version = "0.1";
           src = ./.;
-          buildInputs = dependencies;
+          nativeBuildInputs = [ pkgs.zig pkgs.pkg-config ];
+          buildInputs = with pkgs; [
+            gtk4.dev
+            gtk4-layer-shell
+          ];
+
+          buildPhase = ''
+            export HOME=$TMPDIR
+            zig build -Doptimize=ReleaseFast
+          '';
 
           installPhase = ''
             mkdir -p $out/bin
-            cp cclock $out/bin/cclock
+            cp zig-out/bin/cclock $out/bin/cclock
           '';
         };
 

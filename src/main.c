@@ -1,5 +1,6 @@
 #include <getopt.h>
 #include <gtk/gtk.h>
+#include <gdk/gdk.h>
 #include <gtk4-layer-shell.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,13 +39,26 @@ static gboolean update_label(gpointer user_data) {
 static gboolean on_key_press(GtkEventControllerKey *self, guint keyval,
                              guint keycode, GdkModifierType state,
                              gpointer user_data) {
+  (void)self;
+  (void)keycode;
+  (void)state;
   if (keyval == GDK_KEY_Escape) {
     gtk_window_close(GTK_WINDOW(user_data));
   }
   return FALSE;
 }
 
-inline void window_setup(GtkWindow *window) {
+static void on_window_realize(GtkWidget *widget, gpointer user_data) {
+  (void)user_data;
+
+  // Set empty input region to make window click-through
+  GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(widget));
+  cairo_region_t *region = cairo_region_create();
+  gdk_surface_set_input_region(surface, region);
+  cairo_region_destroy(region);
+}
+
+static inline void window_setup(GtkWindow *window) {
   gtk_window_set_title(window, "gui");
   // gtk_window_set_default_size(window, 400, 500);
 
@@ -52,6 +66,12 @@ inline void window_setup(GtkWindow *window) {
   gtk_layer_set_layer(GTK_WINDOW(window), GTK_LAYER_SHELL_LAYER_OVERLAY);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, TRUE);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
+
+  // Make window click-through (mouse events pass through)
+  gtk_layer_set_keyboard_mode(GTK_WINDOW(window), GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
+
+  // Set up input region after window is realized
+  g_signal_connect(window, "realize", G_CALLBACK(on_window_realize), NULL);
 }
 
 static void activate(GtkApplication *app, gpointer user_data) {
@@ -112,7 +132,7 @@ void print_usage() {
 }
 
 int main(int argc, char **argv) {
-  Config config;
+  Config config = {0};
   int opt, opt_index = 0;
   GtkApplication *app;
   int status;
