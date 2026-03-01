@@ -7,6 +7,7 @@
 
 typedef struct {
   int time; // seconds
+  char *task;
 } Config;
 
 typedef struct {
@@ -14,6 +15,68 @@ typedef struct {
   int seconds_remaining;
   GtkApplication *app;
 } TimerData;
+
+typedef struct {
+  char *text;
+  double offset;
+  double text_width;
+  double widget_width;
+  GtkWidget *area;
+} MarqueeData;
+
+static void marquee_draw(GtkDrawingArea *drawing_area, cairo_t *cr, int width,
+                         int height, gpointer data) {
+  (void)drawing_area;
+  MarqueeData *md = (MarqueeData *)data;
+  md->widget_width = width;
+
+  // Measure text
+  PangoLayout *layout = pango_cairo_create_layout(cr);
+  pango_layout_set_text(layout, md->text, -1);
+  PangoFontDescription *desc = pango_font_description_new();
+  pango_font_description_set_absolute_size(desc, 36 * PANGO_SCALE);
+  pango_layout_set_font_description(layout, desc);
+  pango_font_description_free(desc);
+
+  int tw, th;
+  pango_layout_get_pixel_size(layout, &tw, &th);
+  md->text_width = tw;
+
+  cairo_set_source_rgba(cr, 252.0 / 255.0, 239.0 / 255.0, 212.0 / 255.0, 1.0);
+
+  int padding = 10;
+  double ty = (height - th) / 2.0;
+  double tx;
+
+  if (tw <= width - 2 * padding) {
+    tx = (width - tw) / 2.0;
+  } else {
+    tx = (double)width - md->offset;
+  }
+
+  // Clip text inside border
+  cairo_save(cr);
+  cairo_rectangle(cr, padding, 0, width - 2 * padding, height);
+  cairo_clip(cr);
+  cairo_move_to(cr, tx, ty);
+  pango_cairo_show_layout(cr, layout);
+  cairo_restore(cr);
+
+  g_object_unref(layout);
+}
+
+static gboolean marquee_tick(gpointer data) {
+  MarqueeData *md = (MarqueeData *)data;
+
+  if (md->text_width > md->widget_width) {
+    md->offset += 1.5;
+    if (md->offset > md->widget_width + md->text_width)
+      md->offset = 0;
+  }
+
+  gtk_widget_queue_draw(md->area);
+  return G_SOURCE_CONTINUE;
+}
 
 const char *format_time_label(int seconds) {
   static char buffer[64];
@@ -84,7 +147,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
   window = GTK_WINDOW(gtk_application_window_new(app));
   window_setup(window);
 
-  box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_window_set_child(window, box);
 
   label = gtk_label_new(format_time_label(config->time));
@@ -97,15 +160,31 @@ static void activate(GtkApplication *app, gpointer user_data) {
       gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
       GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
-  // Применяем класс к label
   gtk_widget_set_valign(label, GTK_ALIGN_CENTER);
   gtk_widget_set_halign(label, GTK_ALIGN_CENTER);
   gtk_widget_set_margin_top(label, 10);
-  gtk_widget_set_margin_bottom(label, 10);
+  gtk_widget_set_margin_bottom(label, 4);
   gtk_widget_set_margin_start(label, 20);
   gtk_widget_set_margin_end(label, 20);
 
   gtk_box_append(GTK_BOX(box), label);
+
+  if (config->task) {
+    MarqueeData *md = g_malloc(sizeof(MarqueeData));
+    md->text = config->task;
+    md->offset = 0;
+    md->text_width = 0;
+    md->widget_width = 0;
+
+    GtkWidget *area = gtk_drawing_area_new();
+    md->area = area;
+    gtk_widget_set_size_request(area, -1, 55);
+    gtk_widget_set_hexpand(area, TRUE);
+    gtk_widget_set_margin_bottom(area, 0);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), marquee_draw, md, NULL);
+    g_timeout_add(30, marquee_tick, md);
+    gtk_box_append(GTK_BOX(box), area);
+  }
 
   TimerData *timer_data = g_malloc(sizeof(TimerData));
   timer_data->label = GTK_LABEL(label);
@@ -125,6 +204,7 @@ void print_usage() {
   printf("  -s, --seconds <num>      Set countdown seconds (e.g., -s 30)\n");
   printf("  -m, --minutes <num>      Set countdown minutes (e.g., -m 5)\n");
   printf("  -H, --hours <num>        Set countdown hours (e.g., -H 1)\n");
+  printf("  -t, --task <text>        Show task label below the timer\n");
   printf("\n");
   printf("Examples:\n");
   printf("  cclock -H 1 -m 5 -s 30    Countdown for 1 hour, 5 minutes and 30 "
@@ -148,9 +228,10 @@ int main(int argc, char **argv) {
       {"seconds", required_argument, 0, 's'},
       {"minutes", required_argument, 0, 'm'},
       {"hours", required_argument, 0, 'H'},
+      {"task", required_argument, 0, 't'},
   };
 
-  while ((opt = getopt_long(argc, argv, "hs:m:H:", options, &opt_index)) !=
+  while ((opt = getopt_long(argc, argv, "hs:m:H:t:", options, &opt_index)) !=
          -1) {
     switch (opt) {
     case 'h':
@@ -164,6 +245,9 @@ int main(int argc, char **argv) {
       break;
     case 'H':
       config.time += atoi(optarg) * 60 * 60;
+      break;
+    case 't':
+      config.task = optarg;
       break;
     default:
       print_usage();
