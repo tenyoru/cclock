@@ -52,8 +52,8 @@
 [Desktop Entry]
 Name=CClock
 Comment=Countdown timer overlay
-Exec=cclock
 TryExec=cclock
+Exec=cclock --picker
 Terminal=false
 Type=Application
 Categories=Utility;

@@ -13,6 +13,7 @@ typedef struct {
 
 typedef struct {
   Config config;
+  gboolean force_picker;
 } AppState;
 
 typedef struct {
@@ -105,6 +106,10 @@ static gboolean update_label(gpointer user_data) {
   TimerData *data = (TimerData *)user_data;
 
   if (data->seconds_remaining <= 0) {
+    GdkDisplay *display = gdk_display_get_default();
+    if (display != NULL) {
+      gdk_display_beep(display);
+    }
     g_application_quit(G_APPLICATION(data->app));
     return G_SOURCE_REMOVE;
   }
@@ -249,8 +254,32 @@ static void start_picker(GtkApplication *app, AppState *state) {
 
   GtkWidget *window = gtk_application_window_new(app);
   data->window = GTK_WINDOW(window);
-  gtk_window_set_title(GTK_WINDOW(window), "Set countdown");
-  gtk_window_set_default_size(GTK_WINDOW(window), 420, 220);
+  gtk_window_set_title(GTK_WINDOW(window), "CClock Picker");
+  gtk_window_set_modal(GTK_WINDOW(window), TRUE);
+  gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
+  gtk_window_set_default_size(GTK_WINDOW(window), 430, 250);
+
+  GtkCssProvider *provider = gtk_css_provider_new();
+  gtk_css_provider_load_from_string(
+      provider,
+      "window.picker-popup { background: rgba(20, 22, 26, 0.95); border: 1px "
+      "solid rgba(252, 239, 212, 0.28); border-radius: 14px; }"
+      "window.picker-popup label { color: #fcefd4; }"
+      "window.picker-popup entry, window.picker-popup spinbutton { "
+      "background: rgba(10, 11, 14, 0.85); color: #fcefd4; border-radius: 8px; "
+      "}"
+      "window.picker-popup button.start-button { background: #fcefd4; "
+      "border-radius: 10px; "
+      "padding: 10px 18px; }"
+      "window.picker-popup button.start-button > label { color: #101317; "
+      "font-weight: 700; "
+      "letter-spacing: 0.2px; }"
+      "window.picker-popup button.start-button:hover { background: #fff7e7; }"
+      "window.picker-popup button.start-button:active { background: #e7d7b7; }");
+  gtk_style_context_add_provider_for_display(
+      gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  gtk_widget_add_css_class(window, "picker-popup");
 
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
   gtk_widget_set_margin_top(box, 16);
@@ -273,6 +302,7 @@ static void start_picker(GtkApplication *app, AppState *state) {
   gtk_grid_attach(GTK_GRID(grid), hours_label, 0, 0, 1, 1);
   GtkWidget *hours_spin = gtk_spin_button_new_with_range(0, 99, 1);
   data->hours = GTK_SPIN_BUTTON(hours_spin);
+  gtk_spin_button_set_numeric(data->hours, TRUE);
   gtk_grid_attach(GTK_GRID(grid), hours_spin, 1, 0, 1, 1);
 
   GtkWidget *minutes_label = gtk_label_new("Minutes");
@@ -280,6 +310,7 @@ static void start_picker(GtkApplication *app, AppState *state) {
   gtk_grid_attach(GTK_GRID(grid), minutes_label, 2, 0, 1, 1);
   GtkWidget *minutes_spin = gtk_spin_button_new_with_range(0, 59, 1);
   data->minutes = GTK_SPIN_BUTTON(minutes_spin);
+  gtk_spin_button_set_numeric(data->minutes, TRUE);
   gtk_grid_attach(GTK_GRID(grid), minutes_spin, 3, 0, 1, 1);
 
   GtkWidget *seconds_label = gtk_label_new("Seconds");
@@ -287,6 +318,7 @@ static void start_picker(GtkApplication *app, AppState *state) {
   gtk_grid_attach(GTK_GRID(grid), seconds_label, 4, 0, 1, 1);
   GtkWidget *seconds_spin = gtk_spin_button_new_with_range(0, 59, 1);
   data->seconds = GTK_SPIN_BUTTON(seconds_spin);
+  gtk_spin_button_set_numeric(data->seconds, TRUE);
   gtk_grid_attach(GTK_GRID(grid), seconds_spin, 5, 0, 1, 1);
 
   GtkWidget *task_label = gtk_label_new("Task");
@@ -308,7 +340,13 @@ static void start_picker(GtkApplication *app, AppState *state) {
 
   GtkWidget *start_button = gtk_button_new_with_label("Start countdown");
   g_signal_connect(start_button, "clicked", G_CALLBACK(on_picker_start), data);
+  gtk_widget_add_css_class(start_button, "start-button");
+  gtk_widget_set_hexpand(start_button, TRUE);
+  gtk_widget_set_halign(start_button, GTK_ALIGN_FILL);
+  gtk_widget_set_margin_top(start_button, 6);
+  gtk_widget_set_size_request(start_button, -1, 44);
   gtk_box_append(GTK_BOX(box), start_button);
+  gtk_window_set_default_widget(GTK_WINDOW(window), start_button);
 
   gtk_window_present(GTK_WINDOW(window));
 }
@@ -316,7 +354,7 @@ static void start_picker(GtkApplication *app, AppState *state) {
 static void activate(GtkApplication *app, gpointer user_data) {
   AppState *state = (AppState *)user_data;
 
-  if (state->config.time > 0) {
+  if (!state->force_picker && state->config.time > 0) {
     start_countdown(app, &state->config);
     return;
   }
@@ -330,6 +368,7 @@ void print_usage() {
   printf("If no time is provided, a custom time picker is shown.\n\n");
   printf("Options:\n");
   printf("  -h, --help               Show this help message and exit\n");
+  printf("  -p, --picker             Force opening the custom time picker\n");
   printf("  -s, --seconds <num>      Set countdown seconds (e.g., -s 30)\n");
   printf("  -m, --minutes <num>      Set countdown minutes (e.g., -m 5)\n");
   printf("  -H, --hours <num>        Set countdown hours (e.g., -H 1)\n");
@@ -348,18 +387,22 @@ int main(int argc, char **argv) {
 
   struct option options[] = {
       {"help", no_argument, 0, 'h'},
+      {"picker", no_argument, 0, 'p'},
       {"seconds", required_argument, 0, 's'},
       {"minutes", required_argument, 0, 'm'},
       {"hours", required_argument, 0, 'H'},
       {"task", required_argument, 0, 't'},
   };
 
-  while ((opt = getopt_long(argc, argv, "hs:m:H:t:", options, &opt_index)) !=
+  while ((opt = getopt_long(argc, argv, "hps:m:H:t:", options, &opt_index)) !=
          -1) {
     switch (opt) {
     case 'h':
       print_usage();
       return 0;
+    case 'p':
+      state.force_picker = TRUE;
+      break;
     case 's':
       state.config.time += atoi(optarg);
       break;
