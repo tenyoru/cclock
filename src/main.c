@@ -4,11 +4,16 @@
 #include <gtk4-layer-shell.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct {
   int time; // seconds
   char *task;
 } Config;
+
+typedef struct {
+  Config config;
+} AppState;
 
 typedef struct {
   GtkLabel *label;
@@ -23,6 +28,17 @@ typedef struct {
   double widget_width;
   GtkWidget *area;
 } MarqueeData;
+
+typedef struct {
+  AppState *state;
+  GtkApplication *app;
+  GtkWindow *window;
+  GtkSpinButton *hours;
+  GtkSpinButton *minutes;
+  GtkSpinButton *seconds;
+  GtkEntry *task;
+  GtkLabel *error_label;
+} PickerData;
 
 static void marquee_draw(GtkDrawingArea *drawing_area, cairo_t *cr, int width,
                          int height, gpointer data) {
@@ -137,12 +153,10 @@ static inline void window_setup(GtkWindow *window) {
   g_signal_connect(window, "realize", G_CALLBACK(on_window_realize), NULL);
 }
 
-static void activate(GtkApplication *app, gpointer user_data) {
+static void start_countdown(GtkApplication *app, Config *config) {
   GtkWindow *window;
   GtkWidget *label;
   GtkWidget *box;
-
-  Config *config = (Config *)user_data;
 
   window = GTK_WINDOW(gtk_application_window_new(app));
   window_setup(window);
@@ -196,9 +210,124 @@ static void activate(GtkApplication *app, gpointer user_data) {
   gtk_window_present(window);
 }
 
+static void start_picker(GtkApplication *app, AppState *state);
+
+static void on_picker_start(GtkButton *button, gpointer user_data) {
+  (void)button;
+
+  PickerData *data = (PickerData *)user_data;
+
+  int hours = gtk_spin_button_get_value_as_int(data->hours);
+  int minutes = gtk_spin_button_get_value_as_int(data->minutes);
+  int seconds = gtk_spin_button_get_value_as_int(data->seconds);
+  int total_seconds = hours * 3600 + minutes * 60 + seconds;
+
+  if (total_seconds <= 0) {
+    gtk_label_set_text(data->error_label, "Set at least 1 second.");
+    return;
+  }
+
+  if (data->state->config.task != NULL) {
+    g_free(data->state->config.task);
+    data->state->config.task = NULL;
+  }
+
+  const char *task_text = gtk_editable_get_text(GTK_EDITABLE(data->task));
+  if (task_text != NULL && strlen(task_text) > 0) {
+    data->state->config.task = g_strdup(task_text);
+  }
+
+  data->state->config.time = total_seconds;
+  gtk_window_close(data->window);
+  start_countdown(data->app, &data->state->config);
+}
+
+static void start_picker(GtkApplication *app, AppState *state) {
+  PickerData *data = g_malloc0(sizeof(PickerData));
+  data->state = state;
+  data->app = app;
+
+  GtkWidget *window = gtk_application_window_new(app);
+  data->window = GTK_WINDOW(window);
+  gtk_window_set_title(GTK_WINDOW(window), "Set countdown");
+  gtk_window_set_default_size(GTK_WINDOW(window), 420, 220);
+
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  gtk_widget_set_margin_top(box, 16);
+  gtk_widget_set_margin_bottom(box, 16);
+  gtk_widget_set_margin_start(box, 16);
+  gtk_widget_set_margin_end(box, 16);
+  gtk_window_set_child(GTK_WINDOW(window), box);
+
+  GtkWidget *time_label = gtk_label_new("Custom time");
+  gtk_widget_set_halign(time_label, GTK_ALIGN_START);
+  gtk_box_append(GTK_BOX(box), time_label);
+
+  GtkWidget *grid = gtk_grid_new();
+  gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+  gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+  gtk_box_append(GTK_BOX(box), grid);
+
+  GtkWidget *hours_label = gtk_label_new("Hours");
+  gtk_widget_set_halign(hours_label, GTK_ALIGN_START);
+  gtk_grid_attach(GTK_GRID(grid), hours_label, 0, 0, 1, 1);
+  GtkWidget *hours_spin = gtk_spin_button_new_with_range(0, 99, 1);
+  data->hours = GTK_SPIN_BUTTON(hours_spin);
+  gtk_grid_attach(GTK_GRID(grid), hours_spin, 1, 0, 1, 1);
+
+  GtkWidget *minutes_label = gtk_label_new("Minutes");
+  gtk_widget_set_halign(minutes_label, GTK_ALIGN_START);
+  gtk_grid_attach(GTK_GRID(grid), minutes_label, 2, 0, 1, 1);
+  GtkWidget *minutes_spin = gtk_spin_button_new_with_range(0, 59, 1);
+  data->minutes = GTK_SPIN_BUTTON(minutes_spin);
+  gtk_grid_attach(GTK_GRID(grid), minutes_spin, 3, 0, 1, 1);
+
+  GtkWidget *seconds_label = gtk_label_new("Seconds");
+  gtk_widget_set_halign(seconds_label, GTK_ALIGN_START);
+  gtk_grid_attach(GTK_GRID(grid), seconds_label, 4, 0, 1, 1);
+  GtkWidget *seconds_spin = gtk_spin_button_new_with_range(0, 59, 1);
+  data->seconds = GTK_SPIN_BUTTON(seconds_spin);
+  gtk_grid_attach(GTK_GRID(grid), seconds_spin, 5, 0, 1, 1);
+
+  GtkWidget *task_label = gtk_label_new("Task");
+  gtk_widget_set_halign(task_label, GTK_ALIGN_START);
+  gtk_box_append(GTK_BOX(box), task_label);
+
+  GtkWidget *task_entry = gtk_entry_new();
+  data->task = GTK_ENTRY(task_entry);
+  if (state->config.task) {
+    gtk_editable_set_text(GTK_EDITABLE(task_entry), state->config.task);
+  }
+  gtk_box_append(GTK_BOX(box), task_entry);
+
+  GtkWidget *error = gtk_label_new("");
+  data->error_label = GTK_LABEL(error);
+  gtk_widget_add_css_class(error, "error");
+  gtk_widget_set_halign(error, GTK_ALIGN_START);
+  gtk_box_append(GTK_BOX(box), error);
+
+  GtkWidget *start_button = gtk_button_new_with_label("Start countdown");
+  g_signal_connect(start_button, "clicked", G_CALLBACK(on_picker_start), data);
+  gtk_box_append(GTK_BOX(box), start_button);
+
+  gtk_window_present(GTK_WINDOW(window));
+}
+
+static void activate(GtkApplication *app, gpointer user_data) {
+  AppState *state = (AppState *)user_data;
+
+  if (state->config.time > 0) {
+    start_countdown(app, &state->config);
+    return;
+  }
+
+  start_picker(app, state);
+}
+
 void print_usage() {
   printf("Usage: cclock [options]\n");
-  printf("Simple countdown timer with GTK overlay window.\n\n");
+  printf("Simple countdown timer with GTK overlay window.\n");
+  printf("If no time is provided, a custom time picker is shown.\n\n");
   printf("Options:\n");
   printf("  -h, --help               Show this help message and exit\n");
   printf("  -s, --seconds <num>      Set countdown seconds (e.g., -s 30)\n");
@@ -212,16 +341,10 @@ void print_usage() {
 }
 
 int main(int argc, char **argv) {
-  Config config = {0};
+  AppState state = {0};
   int opt, opt_index = 0;
   GtkApplication *app;
   int status;
-
-  if (argc == 1) {
-    fprintf(stderr, "Error: you must specify at least the time.\n");
-    print_usage();
-    return 1;
-  }
 
   struct option options[] = {
       {"help", no_argument, 0, 'h'},
@@ -238,16 +361,16 @@ int main(int argc, char **argv) {
       print_usage();
       return 0;
     case 's':
-      config.time += atoi(optarg);
+      state.config.time += atoi(optarg);
       break;
     case 'm':
-      config.time += atoi(optarg) * 60;
+      state.config.time += atoi(optarg) * 60;
       break;
     case 'H':
-      config.time += atoi(optarg) * 60 * 60;
+      state.config.time += atoi(optarg) * 60 * 60;
       break;
     case 't':
-      config.task = optarg;
+      state.config.task = g_strdup(optarg);
       break;
     default:
       print_usage();
@@ -255,9 +378,12 @@ int main(int argc, char **argv) {
     }
   }
 
-  app = gtk_application_new("org.gtk.test", G_APPLICATION_DEFAULT_FLAGS);
-  g_signal_connect(app, "activate", G_CALLBACK(activate), &config);
+  app = gtk_application_new("org.tenyoru.cclock", G_APPLICATION_DEFAULT_FLAGS);
+  g_signal_connect(app, "activate", G_CALLBACK(activate), &state);
   status = g_application_run(G_APPLICATION(app), 0, NULL);
+  if (state.config.task != NULL) {
+    g_free(state.config.task);
+  }
   g_object_unref(app);
 
   return status;

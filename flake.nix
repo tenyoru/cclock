@@ -46,6 +46,19 @@
           installPhase = ''
             mkdir -p $out/bin
             cp zig-out/bin/cclock $out/bin/cclock
+
+            mkdir -p $out/share/applications
+            cat > $out/share/applications/cclock.desktop <<EOF
+[Desktop Entry]
+Name=CClock
+Comment=Countdown timer overlay
+Exec=cclock
+TryExec=cclock
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupNotify=false
+EOF
           '';
         };
 
