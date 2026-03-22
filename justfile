@@ -1,6 +1,5 @@
 build:
-	cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -G Ninja -B build
-	cmake --build build
+	zig build
 
 run:
-	./build/cclock
+	zig build run
