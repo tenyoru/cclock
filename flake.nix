@@ -12,7 +12,11 @@
       qt = pkgs.qt6;
       cclock = pkgs.stdenv.mkDerivation {
         pname = "cclock";
-        version = "0.1";
+        version = "0.1.1";
+        meta = {
+          description = "Countdown timer overlay";
+          mainProgram = "cclock";
+        };
         src = pkgs.lib.cleanSourceWith {
           src = ./.;
           filter =
@@ -65,6 +69,11 @@ EOF
       packages.${system} = {
         inherit cclock;
         default = cclock;
+      };
+
+      apps.${system}.default = {
+        type = "app";
+        program = "${cclock}/bin/cclock";
       };
 
       devShells.${system}.default = pkgs.mkShell {
