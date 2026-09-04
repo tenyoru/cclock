@@ -1,5 +1,8 @@
 build:
-	zig build
+	cmake -B build -G Ninja
+	cmake --build build
 
-run:
-	zig build run
+run *args:
+	cmake -B build -G Ninja
+	cmake --build build
+	./build/cclock {{args}}

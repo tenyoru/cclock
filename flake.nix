@@ -1,54 +1,53 @@
 {
   description = "cclock";
 
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    systems.url = "github:nix-systems/default";
-  };
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
-  outputs = { self, nixpkgs, systems, ... }:
+  outputs =
+    { self, nixpkgs, ... }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
 
-      dependencies = with pkgs; [
-        # clang
-        zig
-        gtk4.dev
-        gtk4-layer-shell
-        # cmake
-        # ninja
-        pkg-config
-        # sysprof
-      ];
-
-      devDependencies = dependencies ++ (with pkgs; [
-        # gdb
-      ]);
-    in
-    {
-      packages.${system} = {
-        cclock = pkgs.stdenv.mkDerivation {
-          pname = "cclock";
-          version = "0.1";
+      qt = pkgs.qt6;
+      cclock = pkgs.stdenv.mkDerivation {
+        pname = "cclock";
+        version = "0.1";
+        src = pkgs.lib.cleanSourceWith {
           src = ./.;
-          nativeBuildInputs = [ pkgs.zig pkgs.pkg-config ];
-          buildInputs = with pkgs; [
-            gtk4.dev
-            gtk4-layer-shell
-          ];
+          filter =
+            path: type:
+            let
+              name = baseNameOf path;
+            in
+            pkgs.lib.cleanSourceFilter path type
+            && !(builtins.elem name [
+              "build"
+              ".zig-cache"
+              "zig-out"
+              "result"
+              ".cache"
+            ]);
+        };
 
-          buildPhase = ''
-            export HOME=$TMPDIR
-            zig build -Doptimize=ReleaseFast
-          '';
+        nativeBuildInputs = [
+          pkgs.cmake
+          pkgs.ninja
+          pkgs.pkg-config
+          qt.wrapQtAppsHook
+          qt.qtdeclarative
+        ];
 
-          installPhase = ''
-            mkdir -p $out/bin
-            cp zig-out/bin/cclock $out/bin/cclock
+        buildInputs = [
+          qt.qtbase
+          qt.qtdeclarative
+          qt.qtwayland
+          pkgs.kdePackages.layer-shell-qt
+        ];
 
-            mkdir -p $out/share/applications
-            cat > $out/share/applications/cclock.desktop <<EOF
+        postInstall = ''
+          mkdir -p $out/share/applications
+          cat > $out/share/applications/cclock.desktop <<EOF
 [Desktop Entry]
 Name=CClock
 Comment=Countdown timer overlay
@@ -59,18 +58,23 @@ Type=Application
 Categories=Utility;
 StartupNotify=false
 EOF
-          '';
-        };
-
-        default = self.packages.${system}.cclock;
+        '';
+      };
+    in
+    {
+      packages.${system} = {
+        inherit cclock;
+        default = cclock;
       };
 
-      devShells.${system} = {
-        default = pkgs.mkShell {
-          buildInputs = devDependencies;
-        };
+      devShells.${system}.default = pkgs.mkShell {
+        inputsFrom = [ cclock ];
+        packages = [
+          pkgs.qt6.qtdeclarative
+          pkgs.kdePackages.layer-shell-qt
+        ];
       };
 
-      formatter = pkgs.nixfmt-rfc-style;
+      formatter.${system} = pkgs.nixfmt-rfc-style;
     };
 }
