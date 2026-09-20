@@ -4,7 +4,7 @@
   inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
   outputs =
-    { self, nixpkgs, ... }:
+    { nixpkgs, ... }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -12,7 +12,7 @@
       qt = pkgs.qt6;
       cclock = pkgs.stdenv.mkDerivation {
         pname = "cclock";
-        version = "0.1.1";
+        version = "0.2.0";
         meta = {
           description = "Countdown timer overlay";
           mainProgram = "cclock";
@@ -27,8 +27,6 @@
             pkgs.lib.cleanSourceFilter path type
             && !(builtins.elem name [
               "build"
-              ".zig-cache"
-              "zig-out"
               "result"
               ".cache"
             ]);
@@ -50,18 +48,19 @@
         ];
 
         postInstall = ''
-          mkdir -p $out/share/applications
-          cat > $out/share/applications/cclock.desktop <<EOF
-[Desktop Entry]
-Name=CClock
-Comment=Countdown timer overlay
-TryExec=cclock
-Exec=cclock --picker
-Terminal=false
-Type=Application
-Categories=Utility;
-StartupNotify=false
-EOF
+                    mkdir -p $out/share/applications
+                    cat > $out/share/applications/cclock.desktop <<EOF
+          [Desktop Entry]
+          Name=CClock
+          Comment=Countdown timer overlay
+          Icon=cclock
+          TryExec=cclock
+          Exec=cclock --picker
+          Terminal=false
+          Type=Application
+          Categories=Utility;
+          StartupNotify=false
+          EOF
         '';
       };
     in
@@ -74,16 +73,19 @@ EOF
       apps.${system}.default = {
         type = "app";
         program = "${cclock}/bin/cclock";
+        meta.description = "Countdown timer overlay";
       };
 
       devShells.${system}.default = pkgs.mkShell {
         inputsFrom = [ cclock ];
-        packages = [
+        # wrapQtAppsHook only wraps the installed binary, so an in-tree build
+        # finds no QML modules without this.
+        QML_IMPORT_PATH = pkgs.lib.makeSearchPath "lib/qt-6/qml" [
           pkgs.qt6.qtdeclarative
           pkgs.kdePackages.layer-shell-qt
         ];
       };
 
-      formatter.${system} = pkgs.nixfmt-rfc-style;
+      formatter.${system} = pkgs.nixfmt;
     };
 }

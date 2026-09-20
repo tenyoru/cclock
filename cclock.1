@@ -1,0 +1,104 @@
+.TH CCLOCK 1
+.SH NAME
+cclock \- draggable countdown overlay for Wayland
+.SH SYNOPSIS
+.B cclock
+.RI [ options ]
+.SH DESCRIPTION
+.B cclock
+displays a countdown in a layer-shell overlay attached to a screen edge.
+Drag the overlay to move it between edges and outputs, click it to pause or
+resume, and hover over it to reveal the configured text and close button.
+.PP
+If no duration is supplied, cclock opens a time picker.  Time values supplied
+with different options are added together.  At zero, cclock beeps and continues
+to display elapsed overtime with a leading plus sign.
+.PP
+Control and query options communicate with the running cclock instance.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Display command-line help and exit.
+.TP
+.B \-\-help-all
+Display command-line help, including generic Qt options, and exit.
+.TP
+.BR \-p ", " \-\-picker
+Open the time picker even when a duration was supplied.
+.TP
+.BR \-s ", " \-\-seconds " " \fINUM\fR
+Add NUM seconds to the countdown.
+.TP
+.BR \-m ", " \-\-minutes " " \fINUM\fR
+Add NUM minutes to the countdown.
+.TP
+.BR \-H ", " \-\-hours " " \fINUM\fR
+Add NUM hours to the countdown.
+.TP
+.BR \-t ", " \-\-text " " \fITEXT\fR
+Show TEXT while the overlay is hovered.
+.TP
+.BR \-S ", " \-\-stop
+Stop the running instance and exit.
+.TP
+.BR \-T ", " \-\-time-get
+Print the running instance's time without a leading minute zero and exit.  With
+.BR \-\-stop ,
+print the time before stopping it.
+.TP
+.BR \-g ", " \-\-text-get
+Print the running instance's text and exit.  With
+.BR \-\-stop ,
+print the text before stopping it.  This option cannot be combined with
+.BR \-\-time-get .
+.TP
+.BR \-c ", " \-\-color " " \fICOLOR\fR
+Set the running overlay color.  COLOR must be an opaque Qt color name or hex
+value.  The default is #0b0b0d.
+.TP
+.BR \-C ", " \-\-pause-color " " \fICOLOR\fR
+Set the paused overlay color.  COLOR must be an opaque Qt color name or hex
+value.  The default is #ffd60a.
+.TP
+.B \-\-notify
+Send a desktop notification when this instance is stopped from the overlay or
+through a control command.
+.TP
+.B \-\-pause
+Pause the running instance.
+.TP
+.B \-\-resume
+Resume the running instance.
+.TP
+.B \-\-toggle
+Toggle the running instance between paused and running.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/cclock/cclock.conf
+Saved edge position and last picker value.  If
+.B XDG_CONFIG_HOME
+is unset, Qt normally uses
+.IR ~/.config .
+.TP
+.I $XDG_RUNTIME_DIR/cclock.sock
+Local socket used to control the running instance.
+.SH EXIT STATUS
+.TP
+.B 0
+The requested operation succeeded.
+.TP
+.B 1
+No running instance accepted a control or query request, or startup failed.
+.TP
+.B 2
+The supplied duration, color, or option combination was invalid.
+.SH EXAMPLES
+.TP
+.B cclock -m 25 -t \(dqWrite tests\(dq
+Start a 25-minute countdown with hover text.
+.TP
+.B cclock -m 1 -s 30 -c steelblue -C '#ffd60a'
+Start a 90-second countdown with custom running and paused colors.
+.TP
+.B cclock --stop --time-get
+Print the displayed time, then stop the running instance.
