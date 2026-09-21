@@ -5,7 +5,10 @@
 #include <QColor>
 #include <QCursor>
 #include <QDBusInterface>
+#include <QDir>
+#include <QFile>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalServer>
@@ -15,14 +18,118 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QRegion>
+#include <QSaveFile>
 #include <QScreen>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTextStream>
+#include <QTimer>
 #include <QVariantMap>
 #include <QWindow>
 
 #include <cstdio>
 #include <limits>
+
+struct Config {
+  QString runningColor = "#0b0b0d";
+  QString pausedColor = "#ffd60a";
+  QString overtimeColor = "#d32f2f";
+  QString screen;
+  QString oled = "none";
+  int oledInterval = 60;
+  int oledShift = 5;
+  int oledTimeout = 10;
+  bool keyboardMotion = false;
+  int keyboardStep = 20;
+  QString beforeStart;
+  QString onZero;
+  QString onStop;
+};
+
+static QString unquote(QString value) {
+  value = value.trimmed();
+  if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+    value = value.mid(1, value.size() - 2);
+    value.replace("\\\"", "\"");
+    value.replace("\\\\", "\\");
+  }
+  return value;
+}
+
+static Config loadConfig() {
+  Config cfg;
+  const QString dir =
+      QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) +
+      "/cclock";
+  const QString path = dir + "/config.toml";
+  if (!QFile::exists(path)) {
+    QDir().mkpath(dir);
+    QSaveFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      QTextStream out(&file);
+      out << "running_color = \"#0b0b0d\"\n"
+             "paused_color = \"#ffd60a\"\n"
+             "overtime_color = \"#d32f2f\"\n"
+             "screen = \"\"\n\n"
+             "# OLED protection: \"none\", \"all\", or an output name.\n"
+             "oled = \"none\"\n"
+             "oled_interval = 60\n"
+             "oled_shift = 5\n"
+             "oled_timeout = 10\n\n"
+             "# Vim keys move along the current edge after clicking the timer.\n"
+             "keyboard_motion = false\n"
+             "keyboard_step = 20\n\n"
+             "before_start = \"\"\n"
+             "on_zero = \"\"\n"
+             "on_stop = \"\"\n";
+      file.commit();
+    }
+  }
+
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    return cfg;
+  QTextStream in(&file);
+  while (!in.atEnd()) {
+    QString line = in.readLine().trimmed();
+    if (line.isEmpty() || line.startsWith('#'))
+      continue;
+    const qsizetype equals = line.indexOf('=');
+    if (equals < 1)
+      continue;
+    const QString key = line.left(equals).trimmed();
+    const QString value = unquote(line.mid(equals + 1));
+    bool ok = false;
+    const int number = value.toInt(&ok);
+    if (key == "running_color")
+      cfg.runningColor = value;
+    else if (key == "paused_color")
+      cfg.pausedColor = value;
+    else if (key == "overtime_color")
+      cfg.overtimeColor = value;
+    else if (key == "screen")
+      cfg.screen = value;
+    else if (key == "oled")
+      cfg.oled = value;
+    else if (key == "oled_interval" && ok && number >= 10)
+      cfg.oledInterval = number;
+    else if (key == "oled_shift" && ok && number >= 0 && number <= 20)
+      cfg.oledShift = number;
+    else if (key == "oled_timeout" && ok && number >= 1)
+      cfg.oledTimeout = number;
+    else if (key == "keyboard_motion")
+      cfg.keyboardMotion = value == "true";
+    else if (key == "keyboard_step" && ok && number > 0)
+      cfg.keyboardStep = number;
+    else if (key == "before_start")
+      cfg.beforeStart = value;
+    else if (key == "on_zero")
+      cfg.onZero = value;
+    else if (key == "on_stop")
+      cfg.onStop = value;
+  }
+  return cfg;
+}
 
 class Sys : public QObject {
   Q_OBJECT
@@ -30,7 +137,12 @@ class Sys : public QObject {
   Q_PROPERTY(int remaining READ remaining WRITE setRemaining NOTIFY remainingChanged)
   Q_PROPERTY(QString text READ text CONSTANT)
 public:
-  using QObject::QObject;
+  explicit Sys(QObject *parent = nullptr) : QObject(parent) {
+    connect(qApp, &QGuiApplication::screenAdded, this,
+            [this] { emit screensChanged(); });
+    connect(qApp, &QGuiApplication::screenRemoved, this,
+            [this] { QTimer::singleShot(0, this, &Sys::screensChanged); });
+  }
   bool paused() const { return m_paused; }
   void setPaused(bool on) {
     if (m_paused == on)
@@ -48,6 +160,31 @@ public:
   QString text() const { return m_text; }
   void setText(const QString &text) { m_text = text; }
   void setNotify(bool on) { m_notify = on; }
+  void setCommands(const QString &beforeStart, const QString &onZero,
+                   const QString &onStop) {
+    m_beforeStart = beforeStart;
+    m_onZero = onZero;
+    m_onStop = onStop;
+  }
+  Q_INVOKABLE void timerStarted() {
+    if (m_started)
+      return;
+    m_started = true;
+    runCommand(m_beforeStart);
+  }
+  Q_INVOKABLE void reachedZero() {
+    if (m_reachedZero)
+      return;
+    m_reachedZero = true;
+    runCommand(m_onZero);
+  }
+  Q_INVOKABLE void finish() {
+    if (m_finished)
+      return;
+    m_finished = true;
+    notifyStopped();
+    runCommand(m_onStop);
+  }
   Q_INVOKABLE void notifyStopped() const {
     if (!m_notify)
       return;
@@ -149,24 +286,41 @@ signals:
   void stopRequested();
   void pausedChanged();
   void remainingChanged();
+  void screensChanged();
 
 private:
+  static void runCommand(const QString &command) {
+    if (!command.isEmpty())
+      QProcess::startDetached("/bin/sh", {"-c", command});
+  }
   bool m_paused = false;
   bool m_notify = false;
+  bool m_started = false;
+  bool m_reachedZero = false;
+  bool m_finished = false;
   int m_remaining = 0;
   QString m_text;
+  QString m_beforeStart;
+  QString m_onZero;
+  QString m_onStop;
 };
 
 int main(int argc, char **argv) {
   QApplication app(argc, argv);
   app.setApplicationName("cclock");
+  app.setApplicationVersion("0.3.0");
   app.setDesktopFileName("cclock");
+  app.setQuitOnLastWindowClosed(false);
+  app.setWindowIcon(QIcon("qrc:/qt/qml/CClock/cclock.svg"));
+
+  const Config cfg = loadConfig();
 
   QCommandLineParser p;
   p.setApplicationDescription(
       "Simple countdown timer with overlay window.\n"
       "If no time is provided, a custom time picker is shown.");
   p.addHelpOption();
+  p.addVersionOption();
   const QCommandLineOption picker({"p", "picker"},
                                   "Force opening the custom time picker");
   const QCommandLineOption seconds({"s", "seconds"}, "Set countdown seconds",
@@ -181,29 +335,53 @@ int main(int argc, char **argv) {
                                    "Print the running timer value");
   const QCommandLineOption textGet({"g", "text-get"},
                                    "Print the running timer text");
-  const QCommandLineOption color({"c", "color"}, "Running blob color",
-                                 "color", "#0b0b0d");
-  const QCommandLineOption pauseColor({"C", "pause-color"},
-                                      "Paused blob color", "color", "#ffd60a");
+  const QCommandLineOption color({"c", "running-color", "color"},
+                                  "Running blob color (name or #RRGGBB)",
+                                  "color", cfg.runningColor);
+  const QCommandLineOption pauseColor({"C", "paused-color", "pause-color"},
+                                      "Paused blob color (name or #RRGGBB)",
+                                      "color", cfg.pausedColor);
+  const QCommandLineOption overtimeColor(
+      {"O", "overtime-color"}, "Overtime blob color (name or #RRGGBB)",
+      "color", cfg.overtimeColor);
+  const QCommandLineOption screen(
+      "screen", "Prefer this output; fall back while disconnected", "name",
+      cfg.screen);
+  const QCommandLineOption oled(
+      "oled", "OLED protection: none, all, or an output name", "output",
+      cfg.oled);
   const QCommandLineOption notify("notify", "Notify when the timer is stopped");
   // No short forms: -p is --picker and -S is --stop.
   const QCommandLineOption pause("pause", "Pause the running timer");
   const QCommandLineOption resume("resume", "Resume the running timer");
   const QCommandLineOption toggle("toggle", "Pause or resume the running timer");
   p.addOptions({picker, seconds, minutes, hours, text, stop, timeGet, textGet,
-                color, pauseColor, notify, pause, resume, toggle});
+                 color, pauseColor, overtimeColor, screen, oled, notify, pause,
+                 resume, toggle});
   p.process(app);
 
   const QColor runColor(p.value(color));
   const QColor pausedColor(p.value(pauseColor));
+  const QColor overtime(p.value(overtimeColor));
   if (!runColor.isValid() || runColor.alpha() != 255) {
-    std::fprintf(stderr, "cclock: invalid opaque color for --color: %s\n",
+    std::fprintf(stderr,
+                 "cclock: invalid opaque color for --running-color: %s\n",
                  p.value(color).toLocal8Bit().constData());
     return 2;
   }
   if (!pausedColor.isValid() || pausedColor.alpha() != 255) {
-    std::fprintf(stderr, "cclock: invalid opaque color for --pause-color: %s\n",
+    std::fprintf(stderr, "cclock: invalid opaque color for --paused-color: %s\n",
                  p.value(pauseColor).toLocal8Bit().constData());
+    return 2;
+  }
+  if (!overtime.isValid() || overtime.alpha() != 255) {
+    std::fprintf(stderr,
+                 "cclock: invalid opaque color for --overtime-color: %s\n",
+                 p.value(overtimeColor).toLocal8Bit().constData());
+    return 2;
+  }
+  if (p.value(oled).isEmpty()) {
+    std::fputs("cclock: --oled must be none, all, or an output name\n", stderr);
     return 2;
   }
 
@@ -283,6 +461,7 @@ int main(int argc, char **argv) {
   sys.setRemaining(t);
   sys.setText(p.value(text));
   sys.setNotify(p.isSet(notify));
+  sys.setCommands(cfg.beforeStart, cfg.onZero, cfg.onStop);
   QLocalServer server;
   if (!server.listen(sockPath)) {
     QLocalSocket existing;
@@ -326,17 +505,25 @@ int main(int argc, char **argv) {
   engine.setInitialProperties({
       {"cfgColor", runColor},
       {"cfgPauseColor", pausedColor},
+      {"cfgOvertimeColor", overtime},
       {"cfgDarkText", geom::useDarkText(runColor.red(), runColor.green(),
                                         runColor.blue())},
       {"cfgPauseDarkText",
        geom::useDarkText(pausedColor.red(), pausedColor.green(),
-                         pausedColor.blue())},
+                          pausedColor.blue())},
       {"cfgPicker", p.isSet(picker) || t <= 0},
       {"cfgLastMinutes", sys.get("lastMinutes", 90).toInt()},
       {"cfgEdge", sys.get("edge", "top").toString()},
       {"cfgOffset", sys.get("offset", 0.5).toReal()},
-      {"cfgScreen", sys.screenAtCursor()},
-      {"cfgScreens", sys.screenNames()},
+      {"cfgScreen", p.value(screen).isEmpty()
+                        ? sys.get("screen", sys.screenAtCursor()).toString()
+                        : p.value(screen)},
+      {"cfgOled", p.value(oled)},
+      {"cfgOledInterval", cfg.oledInterval},
+      {"cfgOledShift", cfg.oledShift},
+      {"cfgOledTimeout", cfg.oledTimeout},
+      {"cfgKeyboardMotion", cfg.keyboardMotion},
+      {"cfgKeyboardStep", cfg.keyboardStep},
   });
   engine.load(QUrl(QStringLiteral("qrc:/qt/qml/CClock/Main.qml")));
   if (engine.rootObjects().isEmpty())

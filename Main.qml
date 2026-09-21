@@ -8,17 +8,33 @@ QtObject {
     required property bool cfgPicker
     required property color cfgColor
     required property color cfgPauseColor
+    required property color cfgOvertimeColor
     required property bool cfgDarkText
     required property bool cfgPauseDarkText
     required property int cfgLastMinutes
     required property string cfgEdge
     required property real cfgOffset
     required property string cfgScreen
-    required property var cfgScreens
+    required property string cfgOled
+    required property int cfgOledInterval
+    required property int cfgOledShift
+    required property int cfgOledTimeout
+    required property bool cfgKeyboardMotion
+    required property int cfgKeyboardStep
 
     property string edge: cfgEdge
     property real offset: cfgOffset
-    property string screenName: cfgScreen
+    property string desiredScreen: cfgScreen
+    property string screenName: ""
+    property var overlays: ({})
+    property int oledPhase: 0
+    property bool oledAwake: true
+    property bool oledHovered: false
+    readonly property bool oledProtected: cfgOled === "all" || cfgOled === screenName
+    readonly property int oledTextX: oledPhase === 1 ? cfgOledShift
+                                                     : (oledPhase === 3 ? -cfgOledShift : 0)
+    readonly property int oledTextY: oledPhase === 2 ? cfgOledShift
+                                                     : (oledPhase === 4 ? -cfgOledShift : 0)
     property bool dragging: false
     property real dragX: 0
     property real dragY: 0
@@ -40,13 +56,63 @@ QtObject {
         if (current === previous)
             return
         sys.remaining = current
-        if (previous > 0 && current <= 0)
+        if (previous > 0 && current <= 0) {
             sys.beep()
+            sys.reachedZero()
+            wakeOled()
+        }
     }
 
     function endSession() {
-        sys.notifyStopped()
+        sys.finish()
         Qt.quit()
+    }
+
+    function hasScreen(names, name) {
+        return names.indexOf(name) !== -1
+    }
+
+    function wakeOled() {
+        oledIdleTimer.stop()
+        oledAwake = true
+        if (oledProtected && (sys.paused || sys.remaining < 0) && !oledHovered)
+            oledIdleTimer.start()
+    }
+
+    function syncScreens() {
+        const names = sys.screenNames()
+        const wanted = {}
+        for (let i = 0; i < names.length; i++) {
+            const name = names[i]
+            wanted[name] = true
+            if (!overlays[name])
+                overlays[name] = overlayComp.createObject(root, { "screenHint": name })
+        }
+        for (const name in overlays) {
+            if (!wanted[name]) {
+                overlays[name].destroy()
+                delete overlays[name]
+            }
+        }
+        if (hasScreen(names, desiredScreen))
+            screenName = desiredScreen
+        else if (!hasScreen(names, screenName)) {
+            const fallback = sys.screenAtCursor()
+            screenName = hasScreen(names, fallback) ? fallback : (names.length ? names[0] : "")
+        }
+        wakeOled()
+    }
+
+    function nudge(pixels) {
+        const overlay = overlays[screenName]
+        if (!overlay)
+            return
+        const vertical = edge === "left" || edge === "right"
+        const travel = vertical ? overlay.geo.h - overlay.blobHeight : overlay.geo.w - overlay.blobWidth
+        if (travel <= 0)
+            return
+        offset = Math.max(0, Math.min(1, offset + pixels / travel))
+        sys.set("offset", offset)
     }
 
     function finishDrag() {
@@ -73,6 +139,7 @@ QtObject {
                 root.updateRemaining()
             else
                 root.resetDeadline()
+            root.wakeOled()
         }
     }
 
@@ -83,10 +150,26 @@ QtObject {
         onTriggered: root.updateRemaining()
     }
 
+    property Timer oledTimer: Timer {
+        interval: root.cfgOledInterval * 1000
+        running: !picker.visible && root.cfgOledShift > 0 && root.oledProtected
+        repeat: true
+        onTriggered: root.oledPhase = (root.oledPhase + 1) % 5
+    }
+
+    property Timer oledIdleTimer: Timer {
+        interval: root.cfgOledTimeout * 1000
+        repeat: false
+        onTriggered: if (!root.oledHovered)
+            root.oledAwake = false
+    }
+
     property Component overlayComp: Component {
         Window {
             id: overlay
             property string screenHint
+            readonly property int blobWidth: blob.width
+            readonly property int blobHeight: blob.height
             // Keyed by name, so it always describes the output the layer
             // surface is pinned to. `Screen.*` describes whichever output Qt
             // thinks the window is on, which is not the same thing.
@@ -103,7 +186,9 @@ QtObject {
             LayerShell.Window.layer: LayerShell.Window.LayerOverlay
             LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
             LayerShell.Window.margins: ({ left: 0, top: 0, right: 0, bottom: 0 })
-            LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+            LayerShell.Window.keyboardInteractivity: root.cfgKeyboardMotion && home
+                                                     ? LayerShell.Window.KeyboardInteractivityOnDemand
+                                                     : LayerShell.Window.KeyboardInteractivityNone
             LayerShell.Window.exclusionZone: -1
             LayerShell.Window.activateOnShow: false
             LayerShell.Window.wantsToBeOnActiveScreen: false
@@ -146,6 +231,8 @@ QtObject {
                 root.lastSw = g.w
                 root.lastSh = g.h
                 root.screenName = name
+                root.desiredScreen = name
+                sys.set("screen", name)
             }
 
             function syncMask() {
@@ -169,9 +256,18 @@ QtObject {
                 readonly property bool hovered: ma.containsMouse || closeArea.containsMouse
                 readonly property bool ghost: hovered && !root.dragging
                 readonly property bool vertical: root.edge === "left" || root.edge === "right"
-                readonly property color baseColor: sys.paused ? root.cfgPauseColor : root.cfgColor
-                readonly property bool darkText: sys.paused ? root.cfgPauseDarkText : root.cfgDarkText
-                readonly property color inkColor: darkText ? "#0b0b0d" : "#f5f5f7"
+                readonly property bool oledPausedHidden: root.oledProtected && sys.paused && !root.oledAwake
+                readonly property bool oledOvertimeDimmed: root.oledProtected && sys.remaining < 0 && !root.oledAwake
+                readonly property color baseColor: sys.paused ? root.cfgPauseColor
+                                                               : (sys.remaining < 0
+                                                                  ? (oledOvertimeDimmed ? "#000000" : root.cfgOvertimeColor)
+                                                                  : root.cfgColor)
+                readonly property bool darkText: sys.paused ? root.cfgPauseDarkText
+                                                             : (sys.remaining < 0
+                                                                ? !oledOvertimeDimmed
+                                                                : root.cfgDarkText)
+                readonly property color inkColor: oledOvertimeDimmed ? root.cfgOvertimeColor
+                                                                      : (darkText ? "#0b0b0d" : "#f5f5f7")
                 // Tight where the blob fuses to the screen, roomier on the free
                 // side where the corner radius curves in toward the digits.
                 // The two orientations differ because the font bakes ~6px of
@@ -206,6 +302,12 @@ QtObject {
                 property color outlineColor: Qt.rgba(inkColor.r, inkColor.g, inkColor.b, darkText ? (ghost ? 0.05 : 0.12) : (ghost ? 0.03 : 0.08))
                 color: "transparent"
                 border.width: 0
+                opacity: oledPausedHidden ? 0 : 1
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 300
+                    }
+                }
                 Behavior on surfaceColor {
                     ColorAnimation {
                         duration: 160
@@ -301,13 +403,17 @@ QtObject {
 
                     Text {
                         id: timeText
-                        text: sys.formatTime(sys.remaining, blob.vertical ? "\n" : ":")
+                        text: sys.formatTime(Math.abs(sys.remaining), blob.vertical ? "\n" : ":")
                         horizontalAlignment: Text.AlignHCenter
                         lineHeight: 0.92
                         font.pixelSize: 30
                         font.weight: Font.DemiBold
                         font.features: ({ "tnum": 1 })
-                        color: !sys.paused && sys.remaining < 0 ? (blob.darkText ? "#b00020" : "#ff453a") : blob.inkColor
+                        color: blob.inkColor
+                        transform: Translate {
+                            x: root.oledProtected ? root.oledTextX : 0
+                            y: root.oledProtected ? root.oledTextY : 0
+                        }
                     }
 
                     Text {
@@ -406,6 +512,9 @@ QtObject {
                 property real pressY: 0
 
                 onPressed: mouse => {
+                    root.wakeOled()
+                    if (root.cfgKeyboardMotion)
+                        overlay.requestActivate()
                     pressX = mouse.x
                     pressY = mouse.y
                 }
@@ -446,6 +555,12 @@ QtObject {
                         sys.paused = !sys.paused
                 }
                 onCanceled: root.finishDrag()
+                onContainsMouseChanged: {
+                    if (!overlay.home)
+                        return
+                    root.oledHovered = containsMouse
+                    root.wakeOled()
+                }
             }
 
             Connections {
@@ -454,14 +569,37 @@ QtObject {
                     overlay.syncMask()
                 }
             }
+
+            Item {
+                anchors.fill: parent
+                focus: overlay.active
+                Keys.onPressed: event => {
+                    const vertical = root.edge === "left" || root.edge === "right"
+                    if ((!vertical && event.key === Qt.Key_H) || (vertical && event.key === Qt.Key_K))
+                        root.nudge(-root.cfgKeyboardStep)
+                    else if ((!vertical && event.key === Qt.Key_L) || (vertical && event.key === Qt.Key_J))
+                        root.nudge(root.cfgKeyboardStep)
+                    else
+                        return
+                    event.accepted = true
+                }
+            }
         }
     }
 
     Component.onCompleted: {
-        if (!cfgPicker)
+        syncScreens()
+        if (!cfgPicker) {
+            sys.timerStarted()
             resetDeadline()
-        for (let i = 0; i < cfgScreens.length; i++)
-            overlayComp.createObject(root, { "screenHint": cfgScreens[i] })
+        }
+    }
+
+    property Connections screenConn: Connections {
+        target: sys
+        function onScreensChanged() {
+            root.syncScreens()
+        }
     }
 
     property Window picker: Window {
@@ -491,6 +629,7 @@ QtObject {
                 return
             sys.set("lastMinutes", m)
             sys.remaining = m * 60
+            sys.timerStarted()
             root.resetDeadline()
             picker.visible = false
         }
