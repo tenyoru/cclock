@@ -317,7 +317,7 @@ private:
 int main(int argc, char **argv) {
   QApplication app(argc, argv);
   app.setApplicationName("cclock");
-  app.setApplicationVersion("0.3.1");
+  app.setApplicationVersion("0.4.0");
   app.setDesktopFileName("cclock");
   app.setQuitOnLastWindowClosed(false);
   app.setWindowIcon(QIcon("qrc:/qt/qml/CClock/cclock.svg"));
