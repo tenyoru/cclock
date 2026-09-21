@@ -215,6 +215,9 @@ public:
     const char s = sep.isEmpty() ? ':' : sep[0].toLatin1();
     return QString::fromStdString(geom::formatTime(remaining, s));
   }
+  Q_INVOKABLE QString formatFullscreenTime(int remaining) const {
+    return QString::fromStdString(geom::formatFullscreenTime(remaining));
+  }
   QString consoleTime() const {
     return QString::fromStdString(geom::formatTime(m_remaining, ':', false));
   }

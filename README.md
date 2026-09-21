@@ -73,9 +73,10 @@ Mod+Shift+C { spawn "cclock" "--focus"; }
 In focus mode, use `h`/`l` on horizontal edges and `k`/`j` on vertical
 edges. `Shift+H/J/K/L` moves the blob to the left/bottom/top/right edge, and
 `Tab` toggles pause. `Ctrl+F` toggles fullscreen, `Ctrl+C` stops the timer, and
-`Escape` exits fullscreen before focus mode. Fullscreen uses the blob's current
-state background and foreground colors on the timer's current output and is not
-persisted.
+`Escape` exits fullscreen before focus mode. Fullscreen renders `MM:SS` below
+one hour and zero-padded `HH:MM:SS` when hours are present (for example,
+`01:27:25`); the edge blob keeps its compact existing format. It uses the
+blob's current state colors on the timer's current output and is not persisted.
 Set `keyboard.motion = true` to enable these keys by clicking the blob without
 showing the focus outline. `--focus` works without that setting and shows the
 outline until `Escape` or a drag.

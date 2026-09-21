@@ -101,8 +101,10 @@ Enter focus mode on the running timer.  This works independently of
 .BR keyboard.motion .
 .TP
 .BR \-F ", " \-\-fullscreen
-Toggle fullscreen on the running timer's current output.  Fullscreen uses the
-blob's current state background and foreground colors and is not persisted.
+Toggle fullscreen on the running timer's current output.  Fullscreen renders
+MM:SS below one hour and zero-padded HH:MM:SS when hours are present (for
+example, 01:27:25); the edge blob keeps its compact existing format.  It uses
+the blob's current state colors and is not persisted.
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/cclock/config.toml

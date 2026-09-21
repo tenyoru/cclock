@@ -561,7 +561,7 @@ QtObject {
                     anchors.horizontalCenterOffset: root.oledProtected ? root.oledDrift : 0
                     width: parent.width * 0.9
                     height: parent.height * 0.6
-                    text: sys.formatTime(Math.abs(sys.remaining), ":")
+                    text: sys.formatFullscreenTime(Math.abs(sys.remaining))
                     color: blob.inkColor
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -642,12 +642,15 @@ QtObject {
                 }
                 function onFullscreenChanged() {
                     overlay.syncMask()
+                    if (root.fullscreen && overlay.home)
+                        Qt.callLater(() => keyHandler.forceActiveFocus())
                 }
             }
 
             Item {
+                id: keyHandler
                 anchors.fill: parent
-                focus: overlay.active
+                focus: overlay.active || (overlay.home && root.fullscreen)
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
                         if (root.fullscreen)

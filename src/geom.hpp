@@ -41,6 +41,15 @@ inline std::string formatTime(int remaining, char sep, bool padMinutes = true) {
   return remaining < 0 ? "+" + body : body;
 }
 
+inline std::string formatFullscreenTime(int remaining) {
+  const int s = remaining < 0 ? -remaining : remaining;
+  const std::string body = s < 3600
+                               ? pad2(s / 60) + ':' + pad2(s % 60)
+                               : pad2(s / 3600) + ':' + pad2(s / 60 % 60) +
+                                     ':' + pad2(s % 60);
+  return remaining < 0 ? "+" + body : body;
+}
+
 inline std::string nearestEdge(double px, double py, int sw, int sh,
                                std::string_view current) {
   const double d[] = {py, double(sh) - py, px, double(sw) - px};

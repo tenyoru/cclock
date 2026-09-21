@@ -29,6 +29,10 @@ int main() {
   CHECK(formatTime(-5, ':') == "+00:05");
   CHECK(formatTime(-300, ':', false) == "+5:00");
   CHECK(formatTime(-5, '\n') == "+00\n05");
+  CHECK(formatFullscreenTime(0) == "00:00");
+  CHECK(formatFullscreenTime(109) == "01:49");
+  CHECK(formatFullscreenTime(5245) == "01:27:25");
+  CHECK(formatFullscreenTime(360000) == "100:00:00");
 
   const int sw = 1920, sh = 1080, bw = 140, bh = 62;
   {

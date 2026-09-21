@@ -74,8 +74,10 @@ bottom edge, and `k` and `j` along the left or right edge. Each press moves
 `keyboard.step` pixels. `Shift+H/J/K/L` moves the blob to the
 left/bottom/top/right edge. `Tab` toggles pause, `Ctrl+C` stops the timer, and
 `Ctrl+F` toggles fullscreen on the timer's current output. `Escape` exits
-fullscreen before focus mode. Fullscreen uses the blob's current state colors
-and is not persisted.
+fullscreen before focus mode. Fullscreen renders `MM:SS` below one hour and
+zero-padded `HH:MM:SS` when hours are present (for example, `01:27:25`); the
+edge blob keeps its compact existing format. It uses the blob's current state
+colors and is not persisted.
 
 Dropping the blob after a drag exits focus mode and removes its focus outline.
 
