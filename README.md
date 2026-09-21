@@ -57,9 +57,16 @@ cclock --screen DP-2 --oled DP-2 -m 25
 cclock --pause
 cclock --resume
 cclock --toggle
+cclock --focus
 cclock --time-get
 cclock --text-get
 cclock --stop
+```
+
+For niri, a compositor shortcut can focus the timer globally:
+
+```kdl
+Mod+Shift+C { spawn "cclock" "--focus"; }
 ```
 
 Running cclock without a duration opens the time picker. Different duration
