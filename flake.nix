@@ -12,7 +12,7 @@
       qt = pkgs.qt6;
       cclock = pkgs.stdenv.mkDerivation {
         pname = "cclock";
-        version = "0.3.0";
+        version = "0.3.1";
         meta = {
           description = "Countdown timer overlay";
           mainProgram = "cclock";
