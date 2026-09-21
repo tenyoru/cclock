@@ -320,7 +320,7 @@ int main(int argc, char **argv) {
   app.setApplicationVersion("0.4.0");
   app.setDesktopFileName("cclock");
   app.setQuitOnLastWindowClosed(false);
-  app.setWindowIcon(QIcon("qrc:/qt/qml/CClock/cclock.svg"));
+  app.setWindowIcon(QIcon(":/qt/qml/CClock/cclock.svg"));
 
   const Config cfg = loadConfig();
 
