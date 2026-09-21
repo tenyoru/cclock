@@ -284,6 +284,7 @@ public:
   }
 signals:
   void stopRequested();
+  void focusRequested();
   void pausedChanged();
   void remainingChanged();
   void screensChanged();
@@ -308,7 +309,7 @@ private:
 int main(int argc, char **argv) {
   QApplication app(argc, argv);
   app.setApplicationName("cclock");
-  app.setApplicationVersion("0.3.0");
+  app.setApplicationVersion("0.3.1");
   app.setDesktopFileName("cclock");
   app.setQuitOnLastWindowClosed(false);
   app.setWindowIcon(QIcon("qrc:/qt/qml/CClock/cclock.svg"));
@@ -355,9 +356,10 @@ int main(int argc, char **argv) {
   const QCommandLineOption pause("pause", "Pause the running timer");
   const QCommandLineOption resume("resume", "Resume the running timer");
   const QCommandLineOption toggle("toggle", "Pause or resume the running timer");
+  const QCommandLineOption focus("focus", "Focus the running timer");
   p.addOptions({picker, seconds, minutes, hours, text, stop, timeGet, textGet,
                  color, pauseColor, overtimeColor, screen, oled, notify, pause,
-                 resume, toggle});
+                 resume, toggle, focus});
   p.process(app);
 
   const QColor runColor(p.value(color));
@@ -386,7 +388,7 @@ int main(int argc, char **argv) {
   }
 
   const int stateActions = int(p.isSet(pause)) + int(p.isSet(resume)) +
-                           int(p.isSet(toggle));
+                            int(p.isSet(toggle)) + int(p.isSet(focus));
   if ((p.isSet(timeGet) && p.isSet(textGet)) || stateActions > 1 ||
       (stateActions &&
        (p.isSet(stop) || p.isSet(timeGet) || p.isSet(textGet)))) {
@@ -435,6 +437,8 @@ int main(int argc, char **argv) {
     return request("resume");
   if (p.isSet(toggle))
     return request("toggle");
+  if (p.isSet(focus))
+    return request("focus");
 
   qint64 total = 0;
   const auto addDuration = [&p, &total](const QCommandLineOption &option,
@@ -497,6 +501,8 @@ int main(int argc, char **argv) {
         sys.setPaused(false);
       else if (cmd == "toggle")
         sys.setPaused(!sys.paused());
+      else if (cmd == "focus")
+        emit sys.focusRequested();
     });
   });
 

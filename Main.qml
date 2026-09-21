@@ -134,6 +134,13 @@ QtObject {
         function onStopRequested() {
             root.endSession()
         }
+        function onFocusRequested() {
+            const overlay = root.overlays[root.screenName]
+            if (overlay) {
+                root.wakeOled()
+                overlay.requestActivate()
+            }
+        }
         function onPausedChanged() {
             if (sys.paused)
                 root.updateRemaining()
