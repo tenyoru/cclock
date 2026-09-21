@@ -78,8 +78,10 @@ Enable OLED protection for one output.  Use
 .B all
 for every output or
 .B none
-to disable it.  Protection shifts the digits periodically, hides an idle
-paused blob, and changes idle overtime to red digits on black.
+to disable it.  Protection applies only while the blob is on the selected
+output.  It moves the blob continuously by one collapsed blob size, reduces
+its non-hover opacity, and changes running idle overtime to red digits on
+black.  Paused digits remain visible.
 .TP
 .B \-\-notify
 Send a desktop notification when this instance is stopped from the overlay or
@@ -95,7 +97,8 @@ Resume the running instance.
 Toggle the running instance between paused and running.
 .TP
 .B \-\-focus
-Focus the running timer so its configured keyboard controls receive input.
+Enter focus mode on the running timer.  This works independently of
+.BR keyboard.motion .
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/cclock/config.toml
@@ -105,31 +108,62 @@ is unset, the path is normally
 .IR ~/.config/cclock/config.toml .
 The file is created with defaults on first use.
 .TP
-.I $XDG_CONFIG_HOME/cclock/cclock.conf
-Saved edge, output, position, and last picker value.
+.I $XDG_DATA_HOME/cclock/cclock.conf
+Saved edge, output, position, and last picker value.  If
+.B XDG_DATA_HOME
+is unset, the path is normally
+.IR ~/.local/share/cclock/cclock.conf .
 .TP
 .I $XDG_RUNTIME_DIR/cclock.sock
 Local socket used to control the running instance.
 .SH CONFIGURATION
-The flat TOML keys are
-.BR running_color ,
-.BR paused_color ,
-.BR overtime_color ,
-.BR screen ,
-.BR oled ,
-.BR oled_interval ,
-.BR oled_shift ,
-.BR oled_timeout ,
-.BR keyboard_motion ,
-.BR keyboard_step ,
-.BR before_start ,
-.BR on_zero ,
+The TOML keys are
+.BR colors.running ,
+.BR colors.paused ,
+.BR colors.overtime ,
+.BR oled.output ,
+.BR oled.interval ,
+.BR oled.timeout ,
+.BR keyboard.motion ,
+.BR keyboard.step ,
+.BR commands.before_start ,
+.BR commands.on_zero ,
 and
-.BR on_stop .
+.BR commands.on_stop .
 The three command values are run through
 .B /bin/sh -c
 once at their named lifecycle point.  See the installed project documentation
-or README for a complete example.
+for a complete example.
+.PP
+The timer output is persisted in
+.IR $XDG_DATA_HOME/cclock/cclock.conf .
+.B \-\-screen
+overrides it for one run; there is no timer output key in
+.IR config.toml .
+.SH KEYBOARD CONTROLS
+In focus mode,
+.B h
+and
+.B l
+move along horizontal edges, while
+.B k
+and
+.B j
+move along vertical edges.  The distance is set by
+.BR keyboard.step .
+.BR Shift+H/J/K/L
+moves the blob to the left, bottom, top, or right edge, respectively.
+.B Tab
+toggles pause.
+.B Ctrl+C
+stops the timer.
+.B Escape
+exits focus mode.  Set
+.B keyboard.motion
+to true to activate keyboard controls by clicking the blob without showing the
+focus outline.  Only
+.B \-\-focus
+shows that outline.  Dropping the blob after a drag also exits focus mode.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -149,7 +183,7 @@ Start a 25-minute countdown with hover text.
 Start a 90-second countdown with custom colors.
 .TP
 .B cclock --screen DP-2 --oled DP-2 -m 25
-Prefer DP-2 and enable pixel shifting on that output.
+Prefer DP-2 and enable OLED protection on that output.
 .TP
 .B cclock --stop --time-get
 Print the displayed time, then stop the running instance.
