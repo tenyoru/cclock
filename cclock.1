@@ -7,21 +7,25 @@ cclock \- draggable countdown overlay for Wayland
 .SH DESCRIPTION
 .B cclock
 displays a countdown in a layer-shell overlay attached to a screen edge.
-Drag the overlay to move it between edges and outputs, click it to pause or
-resume, and hover over it to reveal the configured text and close button.
+Drag it between edges and outputs, click it to pause or resume, and hover over
+it to reveal the configured text and close button.
 .PP
-If no duration is supplied, cclock opens a time picker.  Time values supplied
-with different options are added together.  At zero, cclock beeps and continues
-to display elapsed overtime with a leading plus sign.
+If no duration is supplied, cclock opens a time picker.  Values supplied with
+different duration options are added.  At zero, the overlay changes to the
+overtime color and continues to display elapsed time without a leading plus
+sign.  Time queries retain the plus sign.
 .PP
 Control and query options communicate with the running cclock instance.
 .SH OPTIONS
 .TP
 .BR \-h ", " \-\-help
-Display command-line help and exit.
+Display all cclock command-line options and exit.
+.TP
+.BR \-v ", " \-\-version
+Display the cclock version and exit.
 .TP
 .B \-\-help-all
-Display command-line help, including generic Qt options, and exit.
+Display cclock and generic Qt options and exit.
 .TP
 .BR \-p ", " \-\-picker
 Open the time picker even when a duration was supplied.
@@ -39,26 +43,43 @@ Add NUM hours to the countdown.
 Show TEXT while the overlay is hovered.
 .TP
 .BR \-S ", " \-\-stop
-Stop the running instance and exit.
+Stop the running instance and exit.  With a query option, print its value
+before stopping.
 .TP
 .BR \-T ", " \-\-time-get
-Print the running instance's time without a leading minute zero and exit.  With
-.BR \-\-stop ,
-print the time before stopping it.
+Print the running timer value without a leading minute zero and exit.  Overtime
+has a leading plus sign.
 .TP
 .BR \-g ", " \-\-text-get
-Print the running instance's text and exit.  With
-.BR \-\-stop ,
-print the text before stopping it.  This option cannot be combined with
+Print the running timer text and exit.  It cannot be combined with
 .BR \-\-time-get .
 .TP
-.BR \-c ", " \-\-color " " \fICOLOR\fR
-Set the running overlay color.  COLOR must be an opaque Qt color name or hex
-value.  The default is #0b0b0d.
+.BR \-c ", " \-\-running-color ", " \-\-color " " \fICOLOR\fR
+Set the running blob color.  COLOR must be an opaque Qt color name or hex
+value.  The default is #0b0b0d.  The
+.B \-\-color
+name is retained for compatibility.
 .TP
-.BR \-C ", " \-\-pause-color " " \fICOLOR\fR
-Set the paused overlay color.  COLOR must be an opaque Qt color name or hex
-value.  The default is #ffd60a.
+.BR \-C ", " \-\-paused-color ", " \-\-pause-color " " \fICOLOR\fR
+Set the paused blob color.  The default is #ffd60a.  The
+.B \-\-pause-color
+name is retained for compatibility.
+.TP
+.BR \-O ", " \-\-overtime-color " " \fICOLOR\fR
+Set the overtime blob color.  The default is #d32f2f.  Overtime digits are
+dark; while paused, the paused color takes precedence.
+.TP
+.BR \-\-screen " " \fINAME\fR
+Prefer output NAME.  If it is unavailable, cclock uses an available output and
+returns to NAME when it reconnects.
+.TP
+.BR \-\-oled " " \fIOUTPUT\fR
+Enable OLED protection for one output.  Use
+.B all
+for every output or
+.B none
+to disable it.  Protection shifts the digits periodically, hides an idle
+paused blob, and changes idle overtime to red digits on black.
 .TP
 .B \-\-notify
 Send a desktop notification when this instance is stopped from the overlay or
@@ -74,31 +95,58 @@ Resume the running instance.
 Toggle the running instance between paused and running.
 .SH FILES
 .TP
-.I $XDG_CONFIG_HOME/cclock/cclock.conf
-Saved edge position and last picker value.  If
+.I $XDG_CONFIG_HOME/cclock/config.toml
+User settings.  If
 .B XDG_CONFIG_HOME
-is unset, Qt normally uses
-.IR ~/.config .
+is unset, the path is normally
+.IR ~/.config/cclock/config.toml .
+The file is created with defaults on first use.
+.TP
+.I $XDG_CONFIG_HOME/cclock/cclock.conf
+Saved edge, output, position, and last picker value.
 .TP
 .I $XDG_RUNTIME_DIR/cclock.sock
 Local socket used to control the running instance.
+.SH CONFIGURATION
+The flat TOML keys are
+.BR running_color ,
+.BR paused_color ,
+.BR overtime_color ,
+.BR screen ,
+.BR oled ,
+.BR oled_interval ,
+.BR oled_shift ,
+.BR oled_timeout ,
+.BR keyboard_motion ,
+.BR keyboard_step ,
+.BR before_start ,
+.BR on_zero ,
+and
+.BR on_stop .
+The three command values are run through
+.B /bin/sh -c
+once at their named lifecycle point.  See the installed project documentation
+or README for a complete example.
 .SH EXIT STATUS
 .TP
 .B 0
 The requested operation succeeded.
 .TP
 .B 1
-No running instance accepted a control or query request, or startup failed.
+No running instance accepted a request, or startup failed.
 .TP
 .B 2
-The supplied duration, color, or option combination was invalid.
+The duration, color, OLED value, or option combination was invalid.
 .SH EXAMPLES
 .TP
 .B cclock -m 25 -t \(dqWrite tests\(dq
 Start a 25-minute countdown with hover text.
 .TP
-.B cclock -m 1 -s 30 -c steelblue -C '#ffd60a'
-Start a 90-second countdown with custom running and paused colors.
+.B cclock -m 1 -s 30 --running-color steelblue --paused-color '#ffd60a'
+Start a 90-second countdown with custom colors.
+.TP
+.B cclock --screen DP-2 --oled DP-2 -m 25
+Prefer DP-2 and enable pixel shifting on that output.
 .TP
 .B cclock --stop --time-get
 Print the displayed time, then stop the running instance.
