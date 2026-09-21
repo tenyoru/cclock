@@ -293,6 +293,7 @@ public:
 signals:
   void stopRequested();
   void focusRequested();
+  void fullscreenRequested();
   void pausedChanged();
   void remainingChanged();
   void screensChanged();
@@ -364,9 +365,11 @@ int main(int argc, char **argv) {
   const QCommandLineOption resume("resume", "Resume the running timer");
   const QCommandLineOption toggle("toggle", "Pause or resume the running timer");
   const QCommandLineOption focus("focus", "Focus the running timer");
+  const QCommandLineOption fullscreen({"F", "fullscreen"},
+                                      "Toggle fullscreen on the running timer");
   p.addOptions({picker, seconds, minutes, hours, text, stop, timeGet, textGet,
                  color, pauseColor, overtimeColor, screen, oled, notify, pause,
-                 resume, toggle, focus});
+                 resume, toggle, focus, fullscreen});
   p.process(app);
 
   const QColor runColor(p.value(color));
@@ -395,7 +398,8 @@ int main(int argc, char **argv) {
   }
 
   const int stateActions = int(p.isSet(pause)) + int(p.isSet(resume)) +
-                            int(p.isSet(toggle)) + int(p.isSet(focus));
+                            int(p.isSet(toggle)) + int(p.isSet(focus)) +
+                            int(p.isSet(fullscreen));
   if ((p.isSet(timeGet) && p.isSet(textGet)) || stateActions > 1 ||
       (stateActions &&
        (p.isSet(stop) || p.isSet(timeGet) || p.isSet(textGet)))) {
@@ -446,6 +450,8 @@ int main(int argc, char **argv) {
     return request("toggle");
   if (p.isSet(focus))
     return request("focus");
+  if (p.isSet(fullscreen))
+    return request("fullscreen");
 
   qint64 total = 0;
   const auto addDuration = [&p, &total](const QCommandLineOption &option,
@@ -510,6 +516,8 @@ int main(int argc, char **argv) {
         sys.setPaused(!sys.paused());
       else if (cmd == "focus")
         emit sys.focusRequested();
+      else if (cmd == "fullscreen")
+        emit sys.fullscreenRequested();
     });
   });
 

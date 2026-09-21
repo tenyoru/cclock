@@ -35,6 +35,7 @@ QtObject {
     property bool dragging: false
     property bool keyboardFocused: false
     property bool focusOutlined: false
+    property bool fullscreen: false
     property real dragX: 0
     property real dragY: 0
     property real grabX: 0
@@ -164,6 +165,10 @@ QtObject {
                 Qt.callLater(() => overlay.requestActivate())
             }
         }
+        function onFullscreenRequested() {
+            root.fullscreen = !root.fullscreen
+            root.wakeOled()
+        }
         function onPausedChanged() {
             if (sys.paused)
                 root.updateRemaining()
@@ -228,9 +233,11 @@ QtObject {
             LayerShell.Window.layer: LayerShell.Window.LayerOverlay
             LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
             LayerShell.Window.margins: ({ left: 0, top: 0, right: 0, bottom: 0 })
-            LayerShell.Window.keyboardInteractivity: root.keyboardFocused && home
-                                                     ? LayerShell.Window.KeyboardInteractivityOnDemand
-                                                     : LayerShell.Window.KeyboardInteractivityNone
+            LayerShell.Window.keyboardInteractivity: root.fullscreen && home
+                                                     ? LayerShell.Window.KeyboardInteractivityExclusive
+                                                     : (root.keyboardFocused && home
+                                                        ? LayerShell.Window.KeyboardInteractivityOnDemand
+                                                        : LayerShell.Window.KeyboardInteractivityNone)
             LayerShell.Window.exclusionZone: -1
             LayerShell.Window.activateOnShow: false
             LayerShell.Window.wantsToBeOnActiveScreen: false
@@ -278,7 +285,7 @@ QtObject {
             }
 
             function syncMask() {
-                if (root.dragging)
+                if (root.dragging || (home && root.fullscreen))
                     sys.clearInputMask(overlay)
                 else if (home)
                     sys.setInputMask(overlay, Math.round(blob.x), Math.round(blob.y), blob.width, blob.height)
@@ -293,7 +300,7 @@ QtObject {
 
             Rectangle {
                 id: blob
-                visible: home
+                visible: home && !root.fullscreen
                 z: 1
                 readonly property bool hovered: ma.containsMouse || closeArea.containsMouse
                 readonly property bool keyboardFocus: home && root.focusOutlined && overlay.active
@@ -542,6 +549,30 @@ QtObject {
                 }
             }
 
+            Rectangle {
+                id: fullClock
+                visible: home && root.fullscreen
+                anchors.fill: parent
+                z: 1
+                color: blob.baseColor
+
+                Text {
+                    anchors.centerIn: parent
+                    anchors.horizontalCenterOffset: root.oledProtected ? root.oledDrift : 0
+                    width: parent.width * 0.9
+                    height: parent.height * 0.6
+                    text: sys.formatTime(Math.abs(sys.remaining), ":")
+                    color: blob.inkColor
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    fontSizeMode: Text.Fit
+                    minimumPixelSize: 24
+                    font.pixelSize: 2000
+                    font.weight: Font.DemiBold
+                    font.features: ({ "tnum": 1 })
+                }
+            }
+
             MouseArea {
                 id: ma
                 anchors.fill: parent
@@ -563,7 +594,7 @@ QtObject {
                 onPositionChanged: mouse => {
                     // hoverEnabled means this also fires with no button held;
                     // without this guard a post-release move resumes the drag.
-                    if (!pressed)
+                    if (!pressed || root.fullscreen)
                         return
                     if (root.dragging) {
                         overlay.placeBlob(mouse.x, mouse.y)
@@ -609,6 +640,9 @@ QtObject {
                 function onDraggingChanged() {
                     overlay.syncMask()
                 }
+                function onFullscreenChanged() {
+                    overlay.syncMask()
+                }
             }
 
             Item {
@@ -616,8 +650,17 @@ QtObject {
                 focus: overlay.active
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
-                        root.keyboardFocused = false
-                        root.focusOutlined = false
+                        if (root.fullscreen)
+                            root.fullscreen = false
+                        else {
+                            root.keyboardFocused = false
+                            root.focusOutlined = false
+                        }
+                        event.accepted = true
+                        return
+                    }
+                    if (event.key === Qt.Key_F && event.modifiers & Qt.ControlModifier) {
+                        root.fullscreen = !root.fullscreen
                         event.accepted = true
                         return
                     }
@@ -651,6 +694,8 @@ QtObject {
                         event.accepted = true
                         return
                     }
+                    if (root.fullscreen)
+                        return
                     const vertical = root.edge === "left" || root.edge === "right"
                     if ((!vertical && event.key === Qt.Key_H) || (vertical && event.key === Qt.Key_K))
                         root.nudge(-root.cfgKeyboardStep)

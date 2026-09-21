@@ -73,7 +73,9 @@ Run `cclock --focus` to enter focus mode. Use `h` and `l` along the top or
 bottom edge, and `k` and `j` along the left or right edge. Each press moves
 `keyboard.step` pixels. `Shift+H/J/K/L` moves the blob to the
 left/bottom/top/right edge. `Tab` toggles pause, `Ctrl+C` stops the timer, and
-`Escape` exits focus mode.
+`Ctrl+F` toggles fullscreen on the timer's current output. `Escape` exits
+fullscreen before focus mode. Fullscreen uses the blob's current state colors
+and is not persisted.
 
 Dropping the blob after a drag exits focus mode and removes its focus outline.
 

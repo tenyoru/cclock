@@ -99,6 +99,10 @@ Toggle the running instance between paused and running.
 .B \-\-focus
 Enter focus mode on the running timer.  This works independently of
 .BR keyboard.motion .
+.TP
+.BR \-F ", " \-\-fullscreen
+Toggle fullscreen on the running timer's current output.  Fullscreen uses the
+blob's current state background and foreground colors and is not persisted.
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/cclock/config.toml
@@ -155,10 +159,12 @@ move along vertical edges.  The distance is set by
 moves the blob to the left, bottom, top, or right edge, respectively.
 .B Tab
 toggles pause.
+.B Ctrl+F
+toggles fullscreen.
 .B Ctrl+C
 stops the timer.
 .B Escape
-exits focus mode.  Set
+exits fullscreen before focus mode.  Set
 .B keyboard.motion
 to true to activate keyboard controls by clicking the blob without showing the
 focus outline.  Only
