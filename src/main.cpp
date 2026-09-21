@@ -34,10 +34,8 @@ struct Config {
   QString runningColor = "#0b0b0d";
   QString pausedColor = "#ffd60a";
   QString overtimeColor = "#d32f2f";
-  QString screen;
-  QString oled = "none";
+  QString oledOutput = "none";
   int oledInterval = 60;
-  int oledShift = 5;
   int oledTimeout = 10;
   bool keyboardMotion = false;
   int keyboardStep = 20;
@@ -67,18 +65,20 @@ static Config loadConfig() {
     QSaveFile file(path);
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
       QTextStream out(&file);
-      out << "running_color = \"#0b0b0d\"\n"
-             "paused_color = \"#ffd60a\"\n"
-             "overtime_color = \"#d32f2f\"\n"
-             "screen = \"\"\n\n"
-             "# OLED protection: \"none\", \"all\", or an output name.\n"
-             "oled = \"none\"\n"
-             "oled_interval = 60\n"
-             "oled_shift = 5\n"
-             "oled_timeout = 10\n\n"
+      out << "[colors]\n"
+             "running = \"#0b0b0d\"\n"
+             "paused = \"#ffd60a\"\n"
+             "overtime = \"#d32f2f\"\n\n"
+             "[oled]\n"
+             "# Protection: \"none\", \"all\", or an output name.\n"
+             "output = \"none\"\n"
+             "interval = 60\n"
+             "timeout = 10\n\n"
+             "[keyboard]\n"
              "# Vim keys move along the current edge after clicking the timer.\n"
-             "keyboard_motion = false\n"
-             "keyboard_step = 20\n\n"
+             "motion = false\n"
+             "step = 20\n\n"
+             "[commands]\n"
              "before_start = \"\"\n"
              "on_zero = \"\"\n"
              "on_stop = \"\"\n";
@@ -90,45 +90,53 @@ static Config loadConfig() {
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     return cfg;
   QTextStream in(&file);
+  QString section;
   while (!in.atEnd()) {
     QString line = in.readLine().trimmed();
     if (line.isEmpty() || line.startsWith('#'))
       continue;
+    if (line.startsWith('[') && line.endsWith(']')) {
+      section = line.mid(1, line.size() - 2).trimmed();
+      continue;
+    }
     const qsizetype equals = line.indexOf('=');
     if (equals < 1)
       continue;
-    const QString key = line.left(equals).trimmed();
+    const QString key = section + '.' + line.left(equals).trimmed();
     const QString value = unquote(line.mid(equals + 1));
     bool ok = false;
     const int number = value.toInt(&ok);
-    if (key == "running_color")
+    if (key == "colors.running")
       cfg.runningColor = value;
-    else if (key == "paused_color")
+    else if (key == "colors.paused")
       cfg.pausedColor = value;
-    else if (key == "overtime_color")
+    else if (key == "colors.overtime")
       cfg.overtimeColor = value;
-    else if (key == "screen")
-      cfg.screen = value;
-    else if (key == "oled")
-      cfg.oled = value;
-    else if (key == "oled_interval" && ok && number >= 10)
+    else if (key == "oled.output")
+      cfg.oledOutput = value;
+    else if (key == "oled.interval" && ok && number >= 10)
       cfg.oledInterval = number;
-    else if (key == "oled_shift" && ok && number >= 0 && number <= 20)
-      cfg.oledShift = number;
-    else if (key == "oled_timeout" && ok && number >= 1)
+    else if (key == "oled.timeout" && ok && number >= 1)
       cfg.oledTimeout = number;
-    else if (key == "keyboard_motion")
+    else if (key == "keyboard.motion")
       cfg.keyboardMotion = value == "true";
-    else if (key == "keyboard_step" && ok && number > 0)
+    else if (key == "keyboard.step" && ok && number > 0)
       cfg.keyboardStep = number;
-    else if (key == "before_start")
+    else if (key == "commands.before_start")
       cfg.beforeStart = value;
-    else if (key == "on_zero")
+    else if (key == "commands.on_zero")
       cfg.onZero = value;
-    else if (key == "on_stop")
+    else if (key == "commands.on_stop")
       cfg.onStop = value;
   }
   return cfg;
+}
+
+static QString statePath() {
+  const QString dir =
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+  QDir().mkpath(dir);
+  return dir + "/cclock.conf";
 }
 
 class Sys : public QObject {
@@ -198,10 +206,10 @@ public:
   }
   Q_INVOKABLE void beep() const { QApplication::beep(); }
   Q_INVOKABLE QVariant get(const QString &key, const QVariant &def) const {
-    return QSettings("cclock", "cclock").value(key, def);
+    return QSettings(statePath(), QSettings::IniFormat).value(key, def);
   }
   Q_INVOKABLE void set(const QString &key, const QVariant &value) {
-    QSettings("cclock", "cclock").setValue(key, value);
+    QSettings(statePath(), QSettings::IniFormat).setValue(key, value);
   }
   Q_INVOKABLE QString formatTime(int remaining, const QString &sep) const {
     const char s = sep.isEmpty() ? ':' : sep[0].toLatin1();
@@ -346,11 +354,10 @@ int main(int argc, char **argv) {
       {"O", "overtime-color"}, "Overtime blob color (name or #RRGGBB)",
       "color", cfg.overtimeColor);
   const QCommandLineOption screen(
-      "screen", "Prefer this output; fall back while disconnected", "name",
-      cfg.screen);
+      "screen", "Prefer this output; fall back while disconnected", "name");
   const QCommandLineOption oled(
       "oled", "OLED protection: none, all, or an output name", "output",
-      cfg.oled);
+      cfg.oledOutput);
   const QCommandLineOption notify("notify", "Notify when the timer is stopped");
   // No short forms: -p is --picker and -S is --stop.
   const QCommandLineOption pause("pause", "Pause the running timer");
@@ -521,12 +528,11 @@ int main(int argc, char **argv) {
       {"cfgLastMinutes", sys.get("lastMinutes", 90).toInt()},
       {"cfgEdge", sys.get("edge", "top").toString()},
       {"cfgOffset", sys.get("offset", 0.5).toReal()},
-      {"cfgScreen", p.value(screen).isEmpty()
-                        ? sys.get("screen", sys.screenAtCursor()).toString()
-                        : p.value(screen)},
+      {"cfgScreen", p.isSet(screen)
+                         ? p.value(screen)
+                         : sys.get("screen", sys.screenAtCursor()).toString()},
       {"cfgOled", p.value(oled)},
       {"cfgOledInterval", cfg.oledInterval},
-      {"cfgOledShift", cfg.oledShift},
       {"cfgOledTimeout", cfg.oledTimeout},
       {"cfgKeyboardMotion", cfg.keyboardMotion},
       {"cfgKeyboardStep", cfg.keyboardStep},
